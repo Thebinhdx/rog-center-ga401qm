@@ -5,15 +5,17 @@ import Cocoa
 
 public enum ROGNavTab: Int, CaseIterable, Identifiable {
     case dashboard = 0
-    case auraStudio = 1
-    case gameVisual = 2
-    case settings = 3
+    case fanControl = 1
+    case auraStudio = 2
+    case gameVisual = 3
+    case settings = 4
 
     public var id: Int { rawValue }
 
     public var title: String {
         switch self {
         case .dashboard: return "Dashboard"
+        case .fanControl: return "Fan & Power"
         case .auraStudio: return "Aura Core"
         case .gameVisual: return "GameVisual"
         case .settings: return "Settings"
@@ -23,6 +25,7 @@ public enum ROGNavTab: Int, CaseIterable, Identifiable {
     public var icon: String {
         switch self {
         case .dashboard: return "gauge.with.needle.fill"
+        case .fanControl: return "fanblades.fill"
         case .auraStudio: return "sparkles"
         case .gameVisual: return "eye.fill"
         case .settings: return "gearshape.fill"
@@ -32,6 +35,7 @@ public enum ROGNavTab: Int, CaseIterable, Identifiable {
     public var accentColor: Color {
         switch self {
         case .dashboard: return Color(red: 0.92, green: 0.16, blue: 0.20)   // ROG Crimson Red
+        case .fanControl: return Color.cyan
         case .auraStudio: return Color(red: 0.68, green: 0.34, blue: 0.96)  // Aura Chromatic Purple
         case .gameVisual: return Color(red: 0.00, green: 0.68, blue: 1.00)  // GameVisual Vision Cyan
         case .settings: return Color(red: 1.00, green: 0.58, blue: 0.00)    // System Settings Amber
@@ -153,6 +157,8 @@ public struct MainWindowView: View {
                     switch selectedTab {
                     case .dashboard:
                         DashboardView()
+                    case .fanControl:
+                        FanControlView()
                     case .auraStudio:
                         AuraStudioView()
                     case .gameVisual:
@@ -240,6 +246,7 @@ struct TopNavigationToolbar: View {
     private func tabSubtitle(for tab: ROGNavTab) -> String {
         switch tab {
         case .dashboard: return "Hardware Telemetry & Vitality"
+        case .fanControl: return "CPU/GPU Fan Curves & Power Profiles"
         case .auraStudio: return "Hardware Backlight Studio"
         case .gameVisual: return "CoreGraphics LUT Calibration"
         case .settings: return "Preferences & System Daemon"
@@ -317,7 +324,20 @@ struct CircularHeaderAction: View {
                 }
                 .buttonStyle(PlainButtonStyle())
                 .focusable(false)
-
+                
+            case .fanControl:
+                Button(action: {
+                    UserDefaults.standard.synchronize()
+                    NSLog("[ROGFanControl] Manual fan chart configuration successfully saved.")
+                }) {
+                    CircularActionBadge(
+                        icon: "square.and.arrow.down.fill",
+                        tintColor: ROGColor.good,
+                        tooltip: "Save the fan chart configuration manually."
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+                .focusable(false)
             case .auraStudio:
                 Button(action: {
                     withAnimation(.easeInOut(duration: 0.15)) {

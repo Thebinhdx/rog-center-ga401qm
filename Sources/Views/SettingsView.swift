@@ -57,32 +57,6 @@ public struct SettingsView: View {
                     SectionLabel("Aura Hardware & Controller Behavior", systemImage: "sparkles")
 
                     AppleGroupedBox {
-                        // Default Startup Lighting Preset
-                        SettingsRowView(
-                            icon: "sparkles",
-                            iconColor: .purple,
-                            title: "Default Startup Lighting Preset",
-                            subtitle: "Active lighting profile applied when ROG Gaming Center launches."
-                        ) {
-                            Picker("", selection: Binding(
-                                get: { service.activePresetId },
-                                set: { newId in
-                                    if let matched = (AuraPreset.builtInPresets + service.customPresets).first(where: { $0.id == newId }) {
-                                        service.applyPreset(matched)
-                                    }
-                                }
-                            )) {
-                                ForEach(AuraPreset.builtInPresets + service.customPresets) { p in
-                                    Text(p.name).tag(p.id)
-                                }
-                            }
-                            .frame(width: 170)
-                            .labelsHidden()
-                        }
-
-                        Divider()
-                            .background(ROGColor.hairline)
-
                         // Hardware Handshake
                         SettingsRowView(
                             icon: "bolt.badge.automatic.fill",
@@ -237,7 +211,7 @@ public struct SettingsView: View {
 
                 // 5. Footer & App Quit
                 HStack {
-                    Text("Open Source under MIT License • ASUS ROG Strix GL503GE Hackintosh Driver")
+                    Text("Open Source under MIT License • ASUS ROG Zephyrus G14 GA401QM Hackintosh Driver")
                         .font(ROGType.footnote())
                         .foregroundStyle(.secondary)
 
@@ -315,8 +289,6 @@ struct ROGFunctionKeysSheet: View {
             // Shortcut Rows
             VStack(spacing: 8) {
                 ShortcutDetailRow(icon: "sun.max.fill", color: .yellow, title: "Keyboard Backlight Up / Down", keys: ["Fn", "↑ / ↓", "or", "F7 / F8"])
-                Divider().background(ROGColor.hairline)
-                ShortcutDetailRow(icon: "sparkles", color: .purple, title: "Cycle Aura RGB Modes (Rainbow, etc.)", keys: ["Fn", "← / →"])
                 Divider().background(ROGColor.hairline)
                 ShortcutDetailRow(icon: "power", color: .pink, title: "Toggle Backlight Power (Instant On / Off)", keys: ["Fn", "Space"])
                 Divider().background(ROGColor.hairline)

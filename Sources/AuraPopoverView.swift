@@ -1,3 +1,10 @@
+//
+//  AuraPopoverView.swift
+//
+//
+//  Created by thebinhdx on 24/10/26.
+//
+
 import SwiftUI
 import Cocoa
 
@@ -37,14 +44,14 @@ public struct AuraPopoverView: View {
                             .font(.system(size: 12, weight: .bold))
                             .foregroundColor(.primary)
 
-                        Text("Hardware Backlight & Telemetry")
+                        Text("GA401QM Control Center")
                             .font(.system(size: 9, weight: .medium))
                             .foregroundColor(.secondary)
                     }
 
                     Spacer()
 
-                    // Sleek Circular Liquid Power Orb (No Clunky Box, No Blue Focus Ring)
+                    // Sleek Circular Liquid Power Orb
                     Button(action: {
                         withAnimation(.easeInOut(duration: 0.15)) {
                             service.togglePower()
@@ -104,7 +111,7 @@ public struct AuraPopoverView: View {
                                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .foregroundColor(.primary)
 
-                            Text(telemetry.battery.isACConnected ? "AC Adapter • \(Int(telemetry.battery.liveWatts))W" : "Battery Mode")
+                            Text(telemetry.battery.isACConnected ? "AC • \(Int(telemetry.battery.liveWatts))W" : "Battery")
                                 .font(.system(size: 8.5))
                                 .foregroundColor(.secondary)
                         }
@@ -188,39 +195,64 @@ public struct AuraPopoverView: View {
                     )
                 }
 
-                // 5. Aura RGB Presets Row (Clean Chips, Zero Color Code Strings)
+                // 5. Simplified Aura Lighting Mode (Static, Breathing, Strobing)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text("AURA RGB PRESETS")
+                        Text("AURA LIGHTING MODE")
                             .font(.system(size: 9, weight: .bold))
                             .foregroundColor(.secondary.opacity(0.8))
 
                         Spacer()
-
-                        Text(service.activePresetId.capitalized.replacingOccurrences(of: "_", with: " "))
-                            .font(.system(size: 9.5, weight: .semibold))
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
                     }
 
-                    HStack(spacing: 4) {
-                        ForEach(AuraPreset.builtInPresets.prefix(4)) { preset in
+                    HStack(spacing: 6) {
+                        let effects = ["Static", "Breathing", "Strobing"]
+
+                        ForEach(0..<effects.count, id: \.self) { index in
+                            let effectName = effects[index]
+                            let isSelected: Bool = {
+                                let modeString = String(describing: service.currentMode).lowercased()
+                                switch effectName {
+                                case "Static": return modeString.contains("static")
+                                case "Breathing": return modeString.contains("breath")
+                                case "Strobing": return modeString.contains("strobe")
+                                default: return false
+                                }
+                            }()
+
                             Button(action: {
-                                withAnimation(.easeInOut(duration: 0.15)) {
-                                    service.applyPreset(preset)
+                                switch effectName {
+                                case "Static":
+                                    service.applySingleColor(.white)
+                                case "Breathing":
+                                    service.applyBreathing(c1: .white, c2: nil, speed: service.currentSpeed)
+                                case "Strobing":
+                                    service.applyStrobing(color: .white, speed: service.currentSpeed)
+                                default:
+                                    break
                                 }
                             }) {
-                                Text(preset.name.components(separatedBy: " ").first ?? preset.name)
-                                    .font(.system(size: 9.5, weight: service.activePresetId == preset.id ? .semibold : .regular))
-                                    .foregroundColor(service.activePresetId == preset.id ? .white : .primary)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 4.5)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                            .fill(service.activePresetId == preset.id ? Color.blue : Color(NSColor.controlColor).opacity(0.5))
-                                    )
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(isSelected ? ROGColor.accent : Color.secondary.opacity(0.4))
+                                        .frame(width: 6, height: 6)
+                                    Text(effectName)
+                                        .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: ROGRadius.control, style: .continuous)
+                                        .fill(isSelected ? ROGColor.accent.opacity(0.15) : Color(NSColor.controlBackgroundColor).opacity(0.4))
+                                )
+                                .foregroundColor(isSelected ? ROGColor.accent : .primary)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: ROGRadius.control, style: .continuous)
+                                        .stroke(isSelected ? ROGColor.accent.opacity(0.4) : ROGColor.hairline, lineWidth: isSelected ? 1 : 0.5)
+                                )
                             }
                             .buttonStyle(PlainButtonStyle())
+                            .focusable(false)
                         }
                     }
                 }
@@ -307,4 +339,3 @@ struct PopoverDisplayProfileButton: View {
         }
     }
 }
-

@@ -76,7 +76,7 @@ struct ThermalEngineBentoCard: View {
                             }
                         }
 
-                        Text("Coffee Lake DTS")
+                        Text("AMD Cezanne DTS")
                             .font(ROGType.footnote())
                             .foregroundStyle(.secondary)
                     }
@@ -166,7 +166,7 @@ struct SystemArchitectureBentoCard: View {
                 HStack {
                     SectionLabel("System Architecture & Battery", systemImage: "laptopcomputer")
                     Spacer()
-                    AccentBadge("GL503GE", color: ROGColor.accent)
+                    AccentBadge("GA401QM", color: ROGColor.accent)
                 }
 
                 // Specification Rows
@@ -447,7 +447,7 @@ struct QuickHardwareControlsBentoCard: View {
                 Divider()
                     .background(ROGColor.hairline)
 
-                // 2. Aura Core Preset Mode
+                // 2. Aura Core Lighting Mode (Simplified for GA401QM)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Image(systemName: "sparkles")
@@ -458,45 +458,56 @@ struct QuickHardwareControlsBentoCard: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    HStack {
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(ROGColor.accent)
-                                .frame(width: 8, height: 8)
-                            Text(service.activePresetName)
-                                .font(ROGType.bodyEmphasized())
-                                .foregroundStyle(.primary)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color(NSColor.controlBackgroundColor).opacity(0.4))
-                        .clipShape(RoundedRectangle(cornerRadius: ROGRadius.control, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: ROGRadius.control, style: .continuous)
-                                .stroke(ROGColor.hairline, lineWidth: 0.5)
-                        )
+                    // 3 nút chọn nhanh chế độ đèn: Static, Breathing, Strobing
+                    HStack(spacing: 6) {
+                        let effects = ["Static", "Breathing", "Strobing"]
 
-                        Spacer()
+                        ForEach(0..<effects.count, id: \.self) { index in
+                            let effectName = effects[index]
+                            let isSelected: Bool = {
+                                let modeString = String(describing: service.currentMode).lowercased()
+                                switch effectName {
+                                case "Static": return modeString.contains("static")
+                                case "Breathing": return modeString.contains("breath")
+                                case "Strobing": return modeString.contains("strobe")
+                                default: return false
+                                }
+                            }()
 
-                        Button(action: { service.cycleToNextPreset() }) {
-                            HStack(spacing: 5) {
-                                Image(systemName: "arrow.triangle.2.circlepath")
-                                    .font(.system(size: 11, weight: .semibold))
-                                Text("Next Preset")
-                                    .font(ROGType.caption())
+                            Button(action: {
+                                switch effectName {
+                                case "Static":
+                                    service.applySingleColor(.white)
+                                case "Breathing":
+                                    service.applyBreathing(c1: .white, c2: nil, speed: service.currentSpeed)
+                                case "Strobing":
+                                    service.applyStrobing(color: .white, speed: service.currentSpeed)
+                                default:
+                                    break
+                                }
+                            }) {
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(isSelected ? ROGColor.accent : Color.secondary.opacity(0.4))
+                                        .frame(width: 6, height: 6)
+                                    Text(effectName)
+                                        .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: ROGRadius.control, style: .continuous)
+                                        .fill(isSelected ? ROGColor.accent.opacity(0.15) : Color(NSColor.controlBackgroundColor).opacity(0.4))
+                                )
+                                .foregroundColor(isSelected ? ROGColor.accent : .primary)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: ROGRadius.control, style: .continuous)
+                                        .stroke(isSelected ? ROGColor.accent.opacity(0.4) : ROGColor.hairline, lineWidth: isSelected ? 1 : 0.5)
+                                )
                             }
-                            .foregroundStyle(ROGColor.info)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(ROGColor.info.opacity(0.12))
-                            .clipShape(RoundedRectangle(cornerRadius: ROGRadius.control, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: ROGRadius.control, style: .continuous)
-                                    .stroke(ROGColor.info.opacity(0.25), lineWidth: 0.5)
-                            )
+                            .buttonStyle(PlainButtonStyle())
+                            .focusable(false)
                         }
-                        .buttonStyle(PlainButtonStyle())
-                        .focusable(false)
                     }
                 }
 

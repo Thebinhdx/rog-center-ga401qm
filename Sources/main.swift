@@ -210,23 +210,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         bSubItem.submenu = bMenu
         menu.addItem(bSubItem)
 
-        // Presets Submenu
-        let pMenu = NSMenu()
-        for preset in AuraPreset.builtInPresets {
-            let pItem = NSMenuItem(title: preset.name, action: #selector(applyPresetMenuAction(_:)), keyEquivalent: "")
-            pItem.target = self
-            pItem.representedObject = preset
-            if service.activePresetId == preset.id {
-                pItem.state = .on
-            }
-            pMenu.addItem(pItem)
-        }
-        let pSubItem = NSMenuItem(title: "Presets", action: nil, keyEquivalent: "")
-        pSubItem.submenu = pMenu
-        menu.addItem(pSubItem)
-
-        menu.addItem(NSMenuItem.separator())
-
         let resyncItem = NSMenuItem(title: "Re-Sync Hardware Handshake", action: #selector(resyncAction), keyEquivalent: "r")
         resyncItem.target = self
         menu.addItem(resyncItem)
