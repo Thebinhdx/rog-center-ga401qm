@@ -1,0 +1,310 @@
+import SwiftUI
+import Cocoa
+
+// MARK: - macOS Tahoe Liquid Glass Menu Bar Companion
+
+public struct AuraPopoverView: View {
+    @ObservedObject var service = AuraService.shared
+    @ObservedObject var telemetry = TelemetryService.shared
+    @State private var isSpinning: Bool = false
+
+    public init() {}
+
+    private var brightnessString: String {
+        if !service.isPoweredOn || service.currentBrightness == 0 {
+            return "Off"
+        }
+        switch service.currentBrightness {
+        case 3: return "100%"
+        case 2: return "66%"
+        case 1: return "33%"
+        default: return "\(service.currentBrightness * 33)%"
+        }
+    }
+
+    public var body: some View {
+        ZStack {
+            VisualEffectBackground(material: .popover, blendingMode: .behindWindow, state: .active)
+                .edgesIgnoringSafeArea(.all)
+
+            VStack(spacing: 10) {
+                // 1. Header: Liquid Glass App Title & Power Orb
+                HStack(spacing: 8) {
+                    ROGLogoView(size: 22)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("ROG Gaming Center")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.primary)
+
+                        Text("Hardware Backlight & Telemetry")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    // Sleek Circular Liquid Power Orb (No Clunky Box, No Blue Focus Ring)
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            service.togglePower()
+                        }
+                    }) {
+                        ZStack {
+                            Circle()
+                                .fill(service.isPoweredOn ? Color(red: 0.1, green: 0.8, blue: 0.4).opacity(0.18) : Color.secondary.opacity(0.12))
+                                .frame(width: 26, height: 26)
+
+                            Image(systemName: "power")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(service.isPoweredOn ? Color(red: 0.1, green: 0.85, blue: 0.45) : .secondary)
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .focusable(false)
+                    .help("Toggle Backlight Power")
+                }
+
+                // 2. Dual-Vitals Bento Grid (Fans + Battery)
+                HStack(spacing: 8) {
+                    // Fan & Thermal Bento Card
+                    HStack(spacing: 8) {
+                        Image(systemName: "fanblades.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(.blue)
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("\(telemetry.fan.cpuFanRPM) RPM")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.primary)
+
+                            Text("CPU \(telemetry.fan.cpuTempCelsius)°C • GPU \(telemetry.fan.gpuTempCelsius)°C")
+                                .font(.system(size: 8.5))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 7)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.45))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(NSColor.separatorColor).opacity(0.35), lineWidth: 0.5)
+                    )
+
+                    // Battery & Power Bento Card
+                    HStack(spacing: 8) {
+                        Image(systemName: telemetry.battery.isCharging ? "bolt.fill" : "battery.100")
+                            .font(.system(size: 14))
+                            .foregroundColor(telemetry.battery.isCharging ? .green : .blue)
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("\(telemetry.battery.currentCapacity)%")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.primary)
+
+                            Text(telemetry.battery.isACConnected ? "AC Adapter • \(Int(telemetry.battery.liveWatts))W" : "Battery Mode")
+                                .font(.system(size: 8.5))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 7)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.45))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(NSColor.separatorColor).opacity(0.35), lineWidth: 0.5)
+                    )
+                }
+
+                // 3. Control Center Keyboard Brightness Capsule Slider
+                VStack(spacing: 5) {
+                    HStack {
+                        Text("KEYBOARD ILLUMINATION")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.secondary.opacity(0.8))
+
+                        Spacer()
+
+                        Text(brightnessString)
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundColor(service.isPoweredOn ? .primary : .secondary)
+                    }
+
+                    // Interactive Capsule Slider Track
+                    HStack(spacing: 8) {
+                        Image(systemName: service.isPoweredOn ? "sun.max.fill" : "sun.min")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(service.isPoweredOn ? .primary : .secondary)
+                            .frame(width: 14)
+
+                        Slider(
+                            value: Binding(
+                                get: { Double(service.isPoweredOn ? service.currentBrightness : 0) },
+                                set: { val in service.setBrightness(Int(val.rounded())) }
+                            ),
+                            in: 0...3,
+                            step: 1
+                        )
+                        .accentColor(.blue)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.45))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(NSColor.separatorColor).opacity(0.35), lineWidth: 0.5)
+                    )
+                }
+
+                // 4. GameVisual Display Calibration Control
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("GAMEVISUAL CALIBRATION")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.secondary.opacity(0.8))
+
+                    HStack(spacing: 2) {
+                        ForEach(ROGDisplayProfile.allCases) { profile in
+                            PopoverDisplayProfileButton(
+                                profile: profile,
+                                isSelected: telemetry.activeDisplayProfile == profile
+                            ) {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    telemetry.setDisplayProfile(profile)
+                                }
+                            }
+                        }
+                    }
+                    .padding(2)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.55))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(NSColor.separatorColor).opacity(0.35), lineWidth: 0.5)
+                    )
+                }
+
+                // 5. Aura RGB Presets Row (Clean Chips, Zero Color Code Strings)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("AURA RGB PRESETS")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.secondary.opacity(0.8))
+
+                        Spacer()
+
+                        Text(service.activePresetId.capitalized.replacingOccurrences(of: "_", with: " "))
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                    }
+
+                    HStack(spacing: 4) {
+                        ForEach(AuraPreset.builtInPresets.prefix(4)) { preset in
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    service.applyPreset(preset)
+                                }
+                            }) {
+                                Text(preset.name.components(separatedBy: " ").first ?? preset.name)
+                                    .font(.system(size: 9.5, weight: service.activePresetId == preset.id ? .semibold : .regular))
+                                    .foregroundColor(service.activePresetId == preset.id ? .white : .primary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 4.5)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .fill(service.activePresetId == preset.id ? Color.blue : Color(NSColor.controlColor).opacity(0.5))
+                                    )
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                }
+
+                Divider()
+                    .background(Color(NSColor.separatorColor).opacity(0.3))
+
+                // 6. Footer Actions: Re-Sync & Open Full Center
+                HStack {
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.5)) { isSpinning = true }
+                        service.forceHardwareResync()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { isSpinning = false }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .rotationEffect(.degrees(isSpinning ? 360 : 0))
+                            Text("Re-Sync")
+                        }
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.blue)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .focusable(false)
+
+                    Spacer()
+
+                    Button(action: {
+                        AppDelegate.shared?.showMainWindow()
+                    }) {
+                        HStack(spacing: 4) {
+                            Text("Open Center")
+                            Image(systemName: "arrow.up.forward.app")
+                        }
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.primary)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .focusable(false)
+                }
+            }
+            .padding(12)
+            .frame(width: 290)
+        }
+    }
+}
+
+// MARK: - Popover Display Profile Button
+
+struct PopoverDisplayProfileButton: View {
+    let profile: ROGDisplayProfile
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: profile.icon)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(isSelected ? .white : .secondary)
+
+                Text(shortName(profile))
+                    .font(.system(size: 9.5, weight: isSelected ? .semibold : .regular))
+                    .foregroundColor(isSelected ? .white : .primary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isSelected ? Color.blue : Color.clear)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func shortName(_ p: ROGDisplayProfile) -> String {
+        switch p {
+        case .standard: return "Def"
+        case .vividGaming: return "Vivid"
+        case .eyeCare: return "Eye"
+        case .cinema: return "Film"
+        case .fps: return "FPS"
+        case .rts: return "RTS"
+        }
+    }
+}
+

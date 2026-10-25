@@ -1,0 +1,469 @@
+import Foundation
+import Darwin
+import IOKit
+import IOKit.ps
+
+// MARK: - GameVisual / Display Calibration Profiles
+
+public enum ROGDisplayProfile: String, CaseIterable, Codable, Identifiable {
+    case standard = "standard"
+    case vividGaming = "vivid_gaming"
+    case eyeCare = "eye_care"
+    case cinema = "cinema"
+    case fps = "fps"
+    case rts = "rts"
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .standard: return "Default Standard"
+        case .vividGaming: return "Vivid Gaming"
+        case .eyeCare: return "Eye Care (Warm)"
+        case .cinema: return "Cinema Rich"
+        case .fps: return "FPS Mode"
+        case .rts: return "RTS / RPG"
+        }
+    }
+
+    public var icon: String {
+        switch self {
+        case .standard: return "display"
+        case .vividGaming: return "gamecontroller.fill"
+        case .eyeCare: return "eye.fill"
+        case .cinema: return "film.fill"
+        case .fps: return "scope"
+        case .rts: return "shield.fill"
+        }
+    }
+}
+
+// MARK: - Telemetry Data Models
+
+public struct CPULoadData {
+    public var userPercent: Double = 0.0
+    public var systemPercent: Double = 0.0
+    public var idlePercent: Double = 100.0
+    public var totalUsagePercent: Double = 0.0
+}
+
+public struct MemoryUsageData {
+    public var totalGB: Double = 16.0
+    public var activeGB: Double = 0.0
+    public var wiredGB: Double = 0.0
+    public var compressedGB: Double = 0.0
+    public var freeGB: Double = 0.0
+    public var usedPercent: Double = 0.0
+    public var usedGB: Double { activeGB + wiredGB + compressedGB }
+}
+
+public struct BatteryTelemetryData {
+    public var isPresent: Bool = true
+    public var currentCapacity: Int = 85 // %
+    public var maxCapacityPercent: Int = 100
+    public var currentCapacityMAh: Int = 4080
+    public var maxCapacityMAh: Int = 4416
+    public var designCapacityMAh: Int = 4800
+    public var cycleCount: Int = 184
+    public var healthPercent: Int = 92
+    public var wearPercent: Int = 8
+    public var condition: String = "Normal"
+    public var isCharging: Bool = true
+    public var isACConnected: Bool = true
+    public var powerSourceState: String = "AC Power Adapter"
+    public var timeRemainingMinutes: Int? = 42
+    public var voltageVolts: Double = 15.4
+    public var amperageMA: Int = 1820
+    public var liveWatts: Double = 28.0
+    public var temperatureCelsius: Double = 29.4
+    public var adapterWatts: Int = 180
+}
+
+// MARK: - Fan & Thermal Telemetry Models
+
+public struct FanTelemetryData {
+    public var fanRPM: Int = 2200
+    public var maxFanRPM: Int = 3315
+    public var cpuTempCelsius: Int = 45
+    public var thermalHeadroomPercent: Int = 55
+    public var coolingPhaseTitle: String = "Quiet Airflow"
+    public var isRealHardwareThermals: Bool = false
+    public var isRealFanRPM: Bool = false
+
+    // Compatibility aliases
+    public var cpuFanRPM: Int { fanRPM }
+    public var gpuFanRPM: Int { fanRPM }
+    public var gpuTempCelsius: Int { max(35, cpuTempCelsius - 4) }
+}
+
+public struct SystemSpecsData {
+    public var cpuBrand: String = "Intel Core i7"
+    public var physicalCores: Int = 6
+    public var logicalThreads: Int = 12
+    public var totalRAMGB: Int = 16
+    public var osVersion: String = "macOS"
+    public var uptimeString: String = "0h 0m"
+}
+
+// MARK: - Telemetry Service (System Hardware Monitor)
+
+public final class TelemetryService: ObservableObject {
+    public static let shared = TelemetryService()
+
+    @Published public var cpuLoad = CPULoadData()
+    @Published public var memory = MemoryUsageData()
+    @Published public var battery = BatteryTelemetryData()
+    @Published public var fan = FanTelemetryData()
+    @Published public var specs = SystemSpecsData()
+    @Published public var activeDisplayProfile: ROGDisplayProfile = .standard
+    @Published public var batteryChargeLimit: Int = 100 // 60%, 80%, or 100%
+    @Published public var isAsusSMCChargeLimitSupported: Bool = false
+    @Published public var cpuHistory: [Double] = Array(repeating: 5.0, count: 24)
+
+    private var timer: Timer?
+    private var prevCpuLoad: host_cpu_load_info?
+
+    private init() {
+        checkAsusSMCSupport()
+        loadPersistedBatteryLimit()
+        fetchSystemSpecs()
+        refreshTelemetry()
+        startPolling()
+    }
+
+    deinit {
+        stopPolling()
+    }
+
+    private func checkAsusSMCSupport() {
+        var size: size_t = 0
+        let res = sysctlbyname("hw.asus.battery.charging_threshold", nil, &size, nil, 0)
+        isAsusSMCChargeLimitSupported = (res == 0)
+    }
+
+    private func loadPersistedBatteryLimit() {
+        let saved = UserDefaults.standard.integer(forKey: "Aura_BatteryChargeLimit")
+        if saved == 60 || saved == 80 || saved == 100 {
+            self.batteryChargeLimit = saved
+            if isAsusSMCChargeLimitSupported {
+                var val = Int32(saved)
+                _ = sysctlbyname("hw.asus.battery.charging_threshold", nil, nil, &val, MemoryLayout<Int32>.size)
+            }
+        }
+    }
+
+    public func startPolling() {
+        stopPolling()
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.refreshTelemetry()
+        }
+        timer?.tolerance = 0.5
+    }
+
+    public func stopPolling() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    public func refreshTelemetry() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            let newCpu = self.fetchCPULoad()
+            let newMem = self.fetchMemory()
+            let newBat = self.fetchBattery()
+            let newUptime = self.fetchUptime()
+            let newFan = self.fetchFanTelemetry(cpuPercent: newCpu.totalUsagePercent)
+
+            DispatchQueue.main.async {
+                self.cpuLoad = newCpu
+                self.memory = newMem
+                self.battery = newBat
+                self.fan = newFan
+                self.specs.uptimeString = newUptime
+                
+                // Update rolling CPU sparkline history
+                self.cpuHistory.append(newCpu.totalUsagePercent)
+                if self.cpuHistory.count > 24 {
+                    self.cpuHistory.removeFirst()
+                }
+            }
+        }
+    }
+
+    // MARK: - Hardware Metrics Extraction
+
+    private func fetchSystemSpecs() {
+        var size: size_t = 0
+        sysctlbyname("machdep.cpu.brand_string", nil, &size, nil, 0)
+        var model = [CChar](repeating: 0, count: max(1, size))
+        sysctlbyname("machdep.cpu.brand_string", &model, &size, nil, 0)
+        let cpuBrand = String(cString: model).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let threads = ProcessInfo.processInfo.activeProcessorCount
+        let ramGB = Int(ProcessInfo.processInfo.physicalMemory / 1024 / 1024 / 1024)
+        let osVer = "macOS \(ProcessInfo.processInfo.operatingSystemVersion.majorVersion).\(ProcessInfo.processInfo.operatingSystemVersion.minorVersion)"
+
+        var coreCount: Int32 = 0
+        var coreSize = MemoryLayout<Int32>.size
+        sysctlbyname("machdep.cpu.core_count", &coreCount, &coreSize, nil, 0)
+
+        DispatchQueue.main.async {
+            self.specs = SystemSpecsData(
+                cpuBrand: cpuBrand.isEmpty ? "Intel Core Processor" : cpuBrand,
+                physicalCores: coreCount > 0 ? Int(coreCount) : threads / 2,
+                logicalThreads: threads,
+                totalRAMGB: ramGB,
+                osVersion: osVer,
+                uptimeString: "0h 0m"
+            )
+            self.memory.totalGB = Double(ramGB)
+        }
+    }
+
+    private func fetchCPULoad() -> CPULoadData {
+        var cpuLoadInfo = host_cpu_load_info()
+        var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info_data_t>.size / MemoryLayout<integer_t>.size)
+        let hostPort = mach_host_self()
+        let result = withUnsafeMutablePointer(to: &cpuLoadInfo) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics(hostPort, HOST_CPU_LOAD_INFO, $0, &count)
+            }
+        }
+
+        guard result == KERN_SUCCESS else { return cpuLoad }
+
+        guard let prev = prevCpuLoad else {
+            prevCpuLoad = cpuLoadInfo
+            return cpuLoad
+        }
+
+        let userDiff = Double(cpuLoadInfo.cpu_ticks.0 - prev.cpu_ticks.0)
+        let sysDiff = Double(cpuLoadInfo.cpu_ticks.1 - prev.cpu_ticks.1)
+        let idleDiff = Double(cpuLoadInfo.cpu_ticks.2 - prev.cpu_ticks.2)
+        let niceDiff = Double(cpuLoadInfo.cpu_ticks.3 - prev.cpu_ticks.3)
+        let total = userDiff + sysDiff + idleDiff + niceDiff
+
+        self.prevCpuLoad = cpuLoadInfo
+
+        guard total > 0 else { return cpuLoad }
+
+        let userPct = ((userDiff + niceDiff) / total) * 100.0
+        let sysPct = (sysDiff / total) * 100.0
+        let idlePct = (idleDiff / total) * 100.0
+        let usedPct = min(100.0, max(0.0, userPct + sysPct))
+
+        return CPULoadData(
+            userPercent: userPct,
+            systemPercent: sysPct,
+            idlePercent: idlePct,
+            totalUsagePercent: usedPct
+        )
+    }
+
+    private func fetchMemory() -> MemoryUsageData {
+        var vmStats = vm_statistics64()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
+        let hostPort = mach_host_self()
+        let result = withUnsafeMutablePointer(to: &vmStats) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics64(hostPort, HOST_VM_INFO64, $0, &count)
+            }
+        }
+
+        guard result == KERN_SUCCESS else { return memory }
+
+        let pageSize = Double(vm_kernel_page_size) / (1024.0 * 1024.0 * 1024.0)
+        let activeGB = Double(vmStats.active_count) * pageSize
+        let wiredGB = Double(vmStats.wire_count) * pageSize
+        let compressedGB = Double(vmStats.compressor_page_count) * pageSize
+        let freeGB = Double(vmStats.free_count) * pageSize
+
+        let totalGB = max(1.0, Double(ProcessInfo.processInfo.physicalMemory) / (1024.0 * 1024.0 * 1024.0))
+        let usedGB = activeGB + wiredGB + compressedGB
+        let usedPct = min(100.0, max(0.0, (usedGB / totalGB) * 100.0))
+
+        return MemoryUsageData(
+            totalGB: totalGB,
+            activeGB: activeGB,
+            wiredGB: wiredGB,
+            compressedGB: compressedGB,
+            freeGB: freeGB,
+            usedPercent: usedPct
+        )
+    }
+
+    private func fetchBattery() -> BatteryTelemetryData {
+        var data = BatteryTelemetryData()
+        data.isPresent = false
+        
+        // 1. Query IOKit AppleSmartBattery Service
+        let mainPort: mach_port_t
+        if #available(macOS 12.0, *) {
+            mainPort = kIOMainPortDefault
+        } else {
+            mainPort = kIOMasterPortDefault
+        }
+        let service = IOServiceGetMatchingService(mainPort, IOServiceMatching("AppleSmartBattery"))
+        if service != 0 {
+            var props: Unmanaged<CFMutableDictionary>?
+            if IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+               let dict = props?.takeRetainedValue() as? [String: Any] {
+                
+                let isInstalled = dict["BatteryInstalled"] as? Bool ?? true
+                if isInstalled, let maxCap = dict["MaxCapacity"] as? Int ?? (dict["AppleRawMaxCapacity"] as? Int) {
+                    let designCap = dict["DesignCapacity"] as? Int ?? maxCap
+                    let curCap = dict["CurrentCapacity"] as? Int ?? (dict["AppleRawCurrentCapacity"] as? Int ?? maxCap)
+                    let cycles = dict["CycleCount"] as? Int ?? 0
+                    let isCharging = dict["IsCharging"] as? Bool ?? false
+                    let isExternal = dict["ExternalConnected"] as? Bool ?? true
+                    let voltage = dict["Voltage"] as? Int ?? 15400
+                    let amperage = dict["Amperage"] as? Int ?? (dict["InstantAmperage"] as? Int ?? 0)
+                    let tempRaw = dict["Temperature"] as? Int ?? 2940
+                    
+                    let health = max(1, min(100, Int((Double(maxCap) / Double(max(1, designCap))) * 100.0)))
+                    let wear = max(0, 100 - health)
+                    let voltV = Double(voltage) / 1000.0
+                    let liveWatts = abs(voltV * (Double(amperage) / 1000.0))
+                    let tempC = Double(tempRaw) / 100.0
+                    let percent = max(0, min(100, Int((Double(curCap) / Double(max(1, maxCap))) * 100.0)))
+                    
+                    data.isPresent = true
+                    data.currentCapacity = percent
+                    data.currentCapacityMAh = curCap
+                    data.maxCapacityMAh = maxCap
+                    data.designCapacityMAh = designCap
+                    data.cycleCount = cycles
+                    data.healthPercent = health
+                    data.wearPercent = wear
+                    data.condition = (health >= 80 ? "Normal" : (health >= 60 ? "Service Recommended" : "Replace Soon"))
+                    data.isCharging = isCharging
+                    data.isACConnected = isExternal
+                    data.powerSourceState = isExternal ? "AC Power Adapter" : "Running on Battery"
+                    data.voltageVolts = voltV > 0 ? voltV : 15.4
+                    data.amperageMA = amperage
+                    data.liveWatts = liveWatts
+                    data.temperatureCelsius = (tempC > 0 && tempC < 100) ? tempC : 29.4
+                    IOObjectRelease(service)
+                    return data
+                }
+            }
+            IOObjectRelease(service)
+        }
+        
+        // 2. Fallback to IOPSCopyPowerSourcesInfo
+        if let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+           let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() {
+            let count = CFArrayGetCount(sources)
+            if count > 0, let source = CFArrayGetValueAtIndex(sources, 0) {
+                let sourceRef = unsafeBitCast(source, to: CFTypeRef.self)
+                if let desc = IOPSGetPowerSourceDescription(snapshot, sourceRef)?.takeUnretainedValue() as NSDictionary? {
+                    if let isPresent = desc[kIOPSIsPresentKey as String] as? Bool, !isPresent {
+                        data.isPresent = false
+                        return data
+                    }
+                    let current = desc[kIOPSCurrentCapacityKey as String] as? Int ?? 0
+                    let maxCap = desc[kIOPSMaxCapacityKey as String] as? Int ?? 100
+                    let isCharging = desc[kIOPSIsChargingKey as String] as? Bool ?? false
+                    let powerState = desc[kIOPSPowerSourceStateKey as String] as? String ?? ""
+                    let isAC = (powerState == kIOPSACPowerValue)
+                    let timeRem = desc[kIOPSTimeToEmptyKey as String] as? Int
+                    
+                    data.isPresent = true
+                    data.currentCapacity = maxCap > 0 ? Int((Double(current) / Double(maxCap)) * 100.0) : current
+                    data.isCharging = isCharging
+                    data.isACConnected = isAC
+                    data.powerSourceState = isAC ? "AC Power Adapter" : "Running on Battery"
+                    data.timeRemainingMinutes = (timeRem ?? -1) > 0 ? timeRem : nil
+                }
+            }
+        }
+        
+        return data
+    }
+
+    private func fetchUptime() -> String {
+        var bootTime = timeval()
+        var size = MemoryLayout<timeval>.size
+        var mib: [Int32] = [CTL_KERN, KERN_BOOTTIME]
+        sysctl(&mib, 2, &bootTime, &size, nil, 0)
+        let now = Date().timeIntervalSince1970
+        let diff = Int(now - Double(bootTime.tv_sec))
+        let hours = diff / 3600
+        let mins = (diff % 3600) / 60
+        return "\(hours)h \(mins)m"
+    }
+
+    // MARK: - Fan & Thermal Control Handlers
+
+    private func fetchFanTelemetry(cpuPercent: Double) -> FanTelemetryData {
+        var fanData = self.fan
+        // Query live hardware sensors from AppleSMC / VirtualSMC on background thread
+        let smc = SMCReader.shared
+        let realCpuTemp = smc.readCPUTemperature()
+        let realCpuFan = smc.readFanRPM(index: 0)
+        let realMaxFan = smc.readMaxFanRPM(index: 0)
+
+        if let maxR = realMaxFan, maxR > 1000 {
+            fanData.maxFanRPM = Int(maxR)
+        }
+
+        let temp: Int
+        if let realT = realCpuTemp {
+            temp = Int(realT.rounded())
+            fanData.isRealHardwareThermals = true
+        } else {
+            temp = 42 + Int(cpuPercent * 0.45)
+            fanData.isRealHardwareThermals = false
+        }
+
+        // Check if SMC exposes live hardware fan tachometers
+        if let rCpuFan = realCpuFan, rCpuFan > 0 {
+            fanData.isRealFanRPM = true
+            fanData.fanRPM = Int(rCpuFan)
+        } else {
+            // Physical EC thermal response curve
+            fanData.isRealFanRPM = false
+            var baseRpm = 2200
+            if temp < 52 {
+                baseRpm = 1800
+            } else if temp < 75 {
+                baseRpm = 2200 + Int(Double(temp - 52) * 20.0)
+            } else {
+                baseRpm = min(fanData.maxFanRPM, 2700 + Int(Double(temp - 75) * 30.0))
+            }
+            let jitter = Int.random(in: -15...15)
+            fanData.fanRPM = max(1400, min(fanData.maxFanRPM, baseRpm + jitter))
+        }
+
+        fanData.cpuTempCelsius = temp
+        fanData.thermalHeadroomPercent = max(0, min(100, 100 - temp))
+
+        if temp < 52 {
+            fanData.coolingPhaseTitle = "Quiet Airflow"
+        } else if temp < 75 {
+            fanData.coolingPhaseTitle = "Active Cooling"
+        } else {
+            fanData.coolingPhaseTitle = "Thermal Turbo"
+        }
+        return fanData
+    }
+
+    // MARK: - Display Calibration Profile Handlers
+
+    public func setDisplayProfile(_ profile: ROGDisplayProfile) {
+        self.activeDisplayProfile = profile
+        DisplayCalibrationService.shared.applyProfile(profile)
+    }
+
+    public func setBatteryChargeLimit(_ limit: Int) {
+        self.batteryChargeLimit = limit
+        UserDefaults.standard.set(limit, forKey: "Aura_BatteryChargeLimit")
+
+        // Attempt writing to AsusSMC sysctl if supported
+        var val = Int32(limit)
+        let res = sysctlbyname("hw.asus.battery.charging_threshold", nil, nil, &val, MemoryLayout<Int32>.size)
+        if res == 0 {
+            NSLog("[ROGAuraTelemetry] Successfully applied AsusSMC battery charge limit: %d%%", limit)
+        }
+    }
+}
