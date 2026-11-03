@@ -15,7 +15,7 @@
 ---
 
 >[!WARNING]
-**This unofficial mod for ROG Control will be discontinued in favor of a new custom mod based on [thanhnndev/rog-control-macos](https://github.com/thanhnndev/rog-control-macos) for GA401QM in the future.**
+**This unofficial mod for ROG-Gaming-Center will be discontinued in favor of a new custom mod based on [thanhnndev/rog-control-macos](https://github.com/thanhnndev/rog-control-macos) for GA401QM in the future.**
 
 
 ## Overview
