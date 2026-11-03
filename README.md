@@ -1,8 +1,8 @@
 <p align="center">
 <img width="250" height="250" alt="rogg14" src="https://github.com/user-attachments/assets/e2c9ebb8-0e6c-4b9b-8431-8e6874056fb1" />
   
-<h1 align="center"> ROG Gaming Center </h1>
-<p align="center"> ROG Gaming Center for ROG Zephyrus G14 GA401QM </p>
+<h1 align="center"> ROG Gaming Center Modified </h1>
+<p align="center"> ROG Gaming Center Modified for ROG Zephyrus G14 GA401QM </p>
 
 ---
 
@@ -14,6 +14,10 @@
 
 ---
 
+>[!WARNING]
+**This unofficial mod for ROG Control will be discontinued in favor of a new custom mod based on [thanhnndev/rog-control-macos](https://github.com/thanhnndev/rog-control-macos) for GA401QM in the future.**
+
+
 ## Overview
 
 <p align="center">
@@ -22,6 +26,8 @@
 
 
 ---
+
+
 
 ## Compatibility
 
