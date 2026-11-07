@@ -4,6 +4,9 @@
 <h1 align="center"> ROG Gaming Center Modified </h1>
 <p align="center"> ROG Gaming Center Modified for ROG Zephyrus G14 GA401QM </p>
 
+>[!WARNING]
+**This unofficial mod for ROG-Gaming-Center will be discontinued and ARCHIVED**
+
 ---
 
 >[!WARNING]
@@ -13,10 +16,6 @@
 > -   Remember to back up your data. **DO NOT USE FOR IMPORTANT DATA WITHOUT BACKUP; NO WARRANTY.**
 
 ---
-
->[!WARNING]
-**This unofficial mod for ROG-Gaming-Center will be discontinued in favor of a new custom mod based on [thanhnndev/rog-control-macos](https://github.com/thanhnndev/rog-control-macos) for GA401QM in the future.**
-
 
 ## Overview
 
